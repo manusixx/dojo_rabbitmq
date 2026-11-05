@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+.git/
+.gitignore
+# La base de datos de desarrollo no debe quedar dentro de la imagen: el
+# contenedor crea la suya al arrancar.
+data/

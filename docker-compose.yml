@@ -1,0 +1,73 @@
+# Imagen oficial de RabbitMQ con el plugin de administración web.
+services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    container_name: rabbitmq
+    # Nombre de host fijo. RabbitMQ identifica su nodo como
+    # "rabbit@<hostname>" y guarda sus datos bajo ese nombre. Con el
+    # hostname por defecto de Docker (el id del contenedor), cada
+    # contenedor nuevo sería un nodo distinto y no vería las colas
+    # guardadas en el volumen.
+    hostname: rabbitmq
+    ports:
+      # 5672: protocolo AMQP, el que usan los clientes (API y worker).
+      - '5672:5672'
+      # 15672: consola de administración web.
+      - '15672:15672'
+    environment:
+      # Usuario y clave propios para el laboratorio, en lugar del
+      # usuario guest/guest que trae RabbitMQ por defecto (restringido a
+      # conexiones locales en una instalación estándar). Solo se aplican
+      # la primera vez que se crea el volumen de datos.
+      RABBITMQ_DEFAULT_USER: notificador
+      RABBITMQ_DEFAULT_PASS: notificador123
+    volumes:
+      # Las colas y los mensajes persistentes sobreviven a un
+      # docker-compose down/up.
+      - rabbitmq_data:/var/lib/rabbitmq
+    # Evita que otros servicios intenten conectarse antes de que
+    # RabbitMQ esté listo para aceptar conexiones. Se usa
+    # check_port_connectivity y no 'ping': ping solo comprueba que el nodo
+    # está vivo, y puede dar sano antes de que el puerto 5672 acepte
+    # conexiones, lo que haría caer a la API y al worker al arrancar.
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'check_port_connectivity']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+ 
+  notificador-api:
+    build: ./notificador-api
+    container_name: notificador-api
+    ports:
+      - '8000:8000'
+    environment:
+      # Sobrescribe el valor por defecto ('localhost') definido en
+      # producer.py. No se toca el código, solo la variable de entorno
+      # para este contexto. 'rabbitmq' es el nombre del servicio en la red
+      # que Docker Compose crea automáticamente.
+      RABBITMQ_URL: amqp://notificador:notificador123@rabbitmq:5672/
+    depends_on:
+      # Sin esto, la API podría arrancar antes de que RabbitMQ acepte
+      # conexiones y fallar en start_producer().
+      rabbitmq:
+        condition: service_healthy
+ 
+  notificador-worker:
+    build: ./notificador-worker
+    container_name: notificador-worker
+    environment:
+      RABBITMQ_URL: amqp://notificador:notificador123@rabbitmq:5672/
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    # Monta el volumen solo sobre data/, no sobre todo /app, para que el
+    # SQLite sobreviva a un docker-compose down/up sin tapar el código de
+    # la aplicación que se copió al construir la imagen.
+    volumes:
+      - worker_data:/app/data
+ 
+volumes:
+  rabbitmq_data:
+  worker_data:

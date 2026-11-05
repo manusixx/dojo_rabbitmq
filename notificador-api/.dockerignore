@@ -1,0 +1,7 @@
+# El entorno virtual se creó con el Python de Windows y no funcionaría
+# dentro del contenedor Linux. El Dockerfile ya instala las dependencias
+# de cero con pip install.
+venv/
+__pycache__/
+.git/
+.gitignore
